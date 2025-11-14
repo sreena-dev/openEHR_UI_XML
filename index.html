@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>openEHR Dynamic Form Renderer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #app {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 25px;
+        }
+        #search-box {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background-color: #252525;
+            color: #e0e0e0;
+            font-size: 1.1em;
+            box-sizing: border-box; /* Important */
+        }
+        #archetype-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .list-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+        }
+        .list-item:hover {
+            background-color: #333;
+        }
+        .list-item:last-child {
+            border-bottom: none;
+        }
+        #form-container h2 {
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 5px;
+        }
+        fieldset {
+            border: 1px solid #444;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background-color: #252525;
+        }
+        legend {
+            font-weight: bold;
+            font-size: 1.1em;
+            padding: 0 10px;
+        }
+        .form-field {
+            margin-bottom: 15px;
+        }
+        .form-field label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .form-field input[type="text"],
+        .form-field input[type="number"],
+        .form-field input[type="date"],
+        .form-field select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background-color: #333;
+            color: #e0e0e0;
+            box-sizing: border-box; /* Important */
+        }
+        .form-field small {
+            display: block;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+        .form-field input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .form-field .options-group label {
+            display: inline-block;
+            margin-right: 20px;
+        }
+        #submit-btn {
+            background-color: #007acc;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            width: 100%;
+        }
+        #submit-btn:hover {
+            background-color: #005f99;
+        }
+        #output {
+            margin-top: 20px;
+            background-color: #252525;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #333;
+        }
+        #output h3 {
+            margin-top: 0;
+        }
+        #output pre {
+            white-space: pre-wrap; /* Wrap long JSON lines */
+            word-wrap: break-word;
+        }
+        .required-label::after {
+            content: ' *';
+            color: #ff5555;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <header>
+            <h1>openEHR Dynamic Form Renderer</h1>
+        </header>
+
+        <input type="text" id="search-box" placeholder="Search for an archetype...">
+
+        <div id="archetype-list"></div>
+
+        <div id="form-container"></div>
+
+        <div id="output" style="display: none;">
+            <h3>Submitted Form Data (JSON)</h3>
+            <pre id="output-data"></pre>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const API_BASE_URL = 'http://127.0.0.1:5000';
+
+        // --- DOM Elements ---
+        const searchBox = document.getElementById('search-box');
+        const archetypeListEl = document.getElementById('archetype-list');
+        const formContainerEl = document.getElementById('form-container');
+        const outputEl = document.getElementById('output');
+        const outputDataEl = document.getElementById('output-data');
+
+        // --- State ---
+        let allArchetypes = []; // Our local cache of the archetype list
+        let currentFormData = {}; // This will hold the data as the user fills the form
+
+
+        /**
+         * 1. Fetches the list of all archetypes on page load
+         */
+        async function fetchArchetypeList() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/archetypes`);
+                if (!response.ok) throw new Error('Failed to fetch archetype list');
+
+                allArchetypes = await response.json();
+                renderList(allArchetypes);
+            } catch (error) {
+                console.error(error);
+                archetypeListEl.innerHTML = '<div class="list-item">Error loading archetypes. Is the Python server running?</div>';
+            }
+        }
+
+        /**
+         * 2. Renders the list of archetypes based on search
+         */
+        function renderList(archetypes) {
+            archetypeListEl.innerHTML = ''; // Clear the list
+            if (archetypes.length === 0) {
+                archetypeListEl.innerHTML = '<div class="list-item">No matches found.</div>';
+                return;
+            }
+
+            for (const archetype of archetypes) {
+                const item = document.createElement('div');
+                item.className = 'list-item';
+                item.innerText = archetype.name;
+                item.dataset.id = archetype.id; // Store the ID on the element
+                item.onclick = () => loadForm(archetype.id, archetype.name);
+                archetypeListEl.appendChild(item);
+            }
+        }
+
+        /**
+         * 3. Fetches a single archetype definition and builds the form
+         * --- THIS IS THE FIXED FUNCTION (v3) ---
+         */
+        async function loadForm(archetypeId, archetypeName) {
+            console.log(`Loading form for: ${archetypeId}`);
+            formContainerEl.innerHTML = '<h2>Loading form...</h2>';
+            outputEl.style.display = 'none';
+            currentFormData = {}; // Reset form data
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/archetype/${archetypeId}`);
+                if (!response.ok) throw new Error(`Failed to fetch form definition for ${archetypeId}`);
+
+                const formDefinition = await response.json();
+
+                // --- DEBUGGING ---
+                // Open your browser console (F12) to see the JSON from the API
+                console.log('Received Form Definition:', formDefinition);
+
+                formContainerEl.innerHTML = ''; // Clear "Loading..."
+
+                const formEl = document.createElement('form');
+                formEl.id = 'dynamic-form';
+
+                const title = document.createElement('h2');
+                title.innerText = archetypeName;
+                formEl.appendChild(title);
+
+                // --- THIS IS THE FIX ---
+                // The root JSON object *is* the first fieldset.
+                // We don't check for 'formDefinition.fields'.
+                // We just pass the entire object to buildFields,
+                // which will render it as the first fieldset.
+                buildFields([formDefinition], formEl, currentFormData);
+
+                // Add submit button
+                const submitBtn = document.createElement('button');
+                submitBtn.type = 'submit';
+                submitBtn.id = 'submit-btn';
+                submitBtn.innerText = 'Submit Form';
+                formEl.appendChild(submitBtn);
+
+                formEl.onsubmit = handleSubmit;
+
+                formContainerEl.appendChild(formEl);
+
+            } catch (error) {
+                console.error(error);
+                formContainerEl.innerHTML = `<h2>Error loading form: ${error.message}</h2>`;
+            }
+        }
+
+        /**
+         * 4. Recursively builds form fields and fieldsets
+         * --- THIS IS THE FIXED FUNCTION (v3) ---
+         */
+        function buildFields(fields, parentElement, dataContext) {
+            if (!fields) return;
+
+            for (const field of fields) {
+                if (!field) continue;
+
+                // --- START FIX ---
+                // Check if the field *has children* (a 'fields' array).
+                // This correctly handles CLUSTER, ITEM_TREE, OBSERVATION, etc.
+                const hasChildren = field.fields && field.fields.length > 0;
+
+                // Check if the field is a simple data type (the inputs we can render)
+                const isDataField = [
+                    'DV_TEXT',
+                    'DV_QUANTITY',
+                    'DV_DATE_TIME',
+                    'DV_DATE',
+                    'DV_BOOLEAN',
+                    'DV_CODED_TEXT'
+                ].includes(field.type);
+                // --- END FIX ---
+
+
+                if (hasChildren) {
+                    // It's a container, so create a <fieldset>
+                    const fieldset = document.createElement('fieldset');
+                    const legend = document.createElement('legend');
+                    legend.innerText = field.label; // The Python parser gives this a name
+                    if(field.required) legend.classList.add('required-label');
+                    fieldset.appendChild(legend);
+
+                    // Create a new nested object in our form data
+                    dataContext[field.id] = {};
+
+                    // Recurse!
+                    buildFields(field.fields, fieldset, dataContext[field.id]);
+                    parentElement.appendChild(fieldset);
+                }
+                else if (isDataField) {
+                    // It's a simple data field, so create the input
+                    const fieldHtml = createFieldHtml(field, dataContext);
+                    if (fieldHtml) {
+                        parentElement.appendChild(fieldHtml);
+                    }
+                }
+                // Else, it's a type we don't render (like 'SLOT' or 'HISTORY'), so we just ignore it
+            }
+        }
+
+        /**
+         * 5. Creates the HTML for a single form field
+         * (This function is now simpler and only handles data types)
+         */
+        function createFieldHtml(field, dataContext) {
+
+            const fieldWrapper = document.createElement('div');
+            fieldWrapper.className = 'form-field';
+
+            const label = document.createElement('label');
+            label.innerText = field.label || field.id;
+            label.htmlFor = field.id;
+            if (field.required) {
+                label.classList.add('required-label');
+            }
+            fieldWrapper.appendChild(label);
+
+            if (field.description) {
+                const desc = document.createElement('small');
+                desc.innerText = field.description;
+                fieldWrapper.appendChild(desc);
+            }
+
+            // Set initial data to null
+            dataContext[field.id] = null;
+
+            // --- Field Type Switch ---
+            switch (field.type) {
+                case 'DV_TEXT':
+                    const textInput = document.createElement('input');
+                    textInput.type = 'text';
+                    textInput.id = field.id;
+                    textInput.name = field.id;
+                    textInput.required = field.required;
+                    textInput.oninput = (e) => dataContext[field.id] = e.target.value;
+                    fieldWrapper.appendChild(textInput);
+                    break;
+
+                case 'DV_QUANTITY':
+                    const numInput = document.createElement('input');
+                    numInput.type = 'number';
+                    numInput.id = field.id;
+                    numInput.name = field.id;
+                    numInput.step = 'any'; // Allow decimals
+                    numInput.required = field.required;
+                    numInput.oninput = (e) => dataContext[field.id] = e.target.valueAsNumber;
+                    fieldWrapper.appendChild(numInput);
+                    break;
+
+                case 'DV_DATE_TIME':
+                case 'DV_DATE':
+                    const dateInput = document.createElement('input');
+                    dateInput.type = 'date';
+                    dateInput.id = field.id;
+                    dateInput.name = field.id;
+                    dateInput.required = field.required;
+                    dateInput.oninput = (e) => dataContext[field.id] = e.target.value;
+                    fieldWrapper.appendChild(dateInput);
+                    break;
+
+                case 'DV_BOOLEAN':
+                    const boolInput = document.createElement('input');
+                    boolInput.type = 'checkbox';
+                    boolInput.id = field.id;
+                    boolInput.name = field.id;
+                    dataContext[field.id] = false; // Default to false
+                    boolInput.onchange = (e) => dataContext[field.id] = e.target.checked;
+                    // Tweak for better layout
+                    label.prepend(boolInput);
+                    label.style.display = 'inline-block';
+                    fieldWrapper.prepend(label);
+                    break;
+
+                case 'DV_CODED_TEXT':
+                    if (field.options && field.options.length > 5) {
+                        // Use a <select> dropdown for many options
+                        const selectInput = document.createElement('select');
+                        selectInput.id = field.id;
+                        selectInput.name = field.id;
+                        selectInput.required = field.required;
+
+                        const defaultOpt = document.createElement('option');
+                        defaultOpt.value = '';
+                        defaultOpt.innerText = `Select ${field.label}...`;
+                        selectInput.appendChild(defaultOpt);
+
+                        field.options.forEach(opt => {
+                            const optionEl = document.createElement('option');
+                            optionEl.value = opt.value;
+                            optionEl.innerText = opt.label;
+                            selectInput.appendChild(optionEl);
+                        });
+                        selectInput.onchange = (e) => dataContext[field.id] = e.target.value;
+                        fieldWrapper.appendChild(selectInput);
+                    } else if (field.options && field.options.length > 0) {
+                        // Use radio buttons for few options
+                        const radioGroup = document.createElement('div');
+                        radioGroup.className = 'options-group';
+                        field.options.forEach(opt => {
+                            const radioId = `${field.id}-${opt.value}`;
+                            const radioLabel = document.createElement('label');
+                            const radioInput = document.createElement('input');
+                            radioInput.type = 'radio';
+                            radioInput.id = radioId;
+                            radioInput.name = field.id; // All share the same name
+                            radioInput.value = opt.value;
+                            radioInput.required = field.required;
+                            radioInput.onchange = (e) => dataContext[field.id] = e.target.value;
+
+                            radioLabel.htmlFor = radioId;
+                            radioLabel.innerText = opt.label;
+                            radioLabel.prepend(radioInput);
+                            radioGroup.appendChild(radioLabel);
+                        });
+                        fieldWrapper.appendChild(radioGroup);
+                    } else {
+                        // DV_CODED_TEXT with no options, treat as text
+                        const textInput = document.createElement('input');
+                        textInput.type = 'text';
+                        textInput.id = field.id;
+                        textInput.name = field.id;
+                        textInput.placeholder = 'Enter coded text value...';
+                        textInput.required = field.required;
+                        textInput.oninput = (e) => dataContext[field.id] = e.target.value;
+                        fieldWrapper.appendChild(textInput);
+                    }
+                    break;
+
+                default:
+                   return null; // Should never happen
+            }
+
+            return fieldWrapper;
+        }
+
+        /**
+         * 6. Handles the search box input
+         */
+        searchBox.oninput = (e) => {
+            const query = e.target.value.toLowerCase();
+            const filtered = allArchetypes.filter(arch =>
+                arch.name.toLowerCase().includes(query) ||
+                arch.id.toLowerCase().includes(query)
+            );
+            renderList(filtered);
+        };
+
+        /**
+         * 7. Handles the final form submission
+         */
+        function handleSubmit(e) {
+            e.preventDefault(); // Stop the page from reloading
+
+            console.log('Form Submitted. Data:', currentFormData);
+
+            // Show the output
+            outputDataEl.innerText = JSON.stringify(currentFormData, null, 2); // Pretty-print the JSON
+            outputEl.style.display = 'block';
+        }
+
+        // --- Initial Load ---
+        fetchArchetypeList();
+
+    </script>
+</body>
+</html>

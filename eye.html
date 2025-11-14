@@ -1,0 +1,77 @@
+<form id="adv-care-form">
+  <h2>Advance Care Plan (adv_care.v0)</h2>
+
+  <div>
+    <label for="coded-text">Coded text:</label>
+    <select id="coded-text">
+      <option value="431">persistent</option>
+    </select>
+  </div>
+
+  <hr>
+
+  <fieldset>
+    <legend>Event Context</legend>
+
+    <div>
+      <label for="start-time">Start Time:</label>
+      <input type="datetime-local" id="start-time" required>
+    </div>
+
+    <div>
+      <label for="setting">Setting:</label>
+      <input type="text" id="setting" required>
+      </div>
+
+    <details>
+      <summary>Acquisition details on eye fundus images (Optional)</summary>
+
+      <div>
+        <label>Laterality:</label>
+        <input type="radio" id="left-eye" name="laterality" value="at0024"><label for="left-eye">Left eye</label>
+        <input type="radio" id="right-eye" name="laterality" value="at0025"><label for="right-eye">Right eye</label>
+        <input type="radio" id="both-eyes" name="laterality" value="at0026"><label for="both-eyes">Both eyes</label>
+      </div>
+
+      <div>
+        <label for="method">Method:</label>
+        <select id="method">
+          <option value="at0007" selected>Non-mydriatic retinography (Default)</option>
+          <option value="at0002">Direct</option>
+          <option value="at0003">Indirect</option>
+          </select>
+      </div>
+
+      <div>
+        <label for="attempts">Attempts Allowed (Min 1, Default 3):</label>
+        <input type="number" id="attempts" min="1" value="3">
+      </div>
+
+      <div>
+        <label for="mosaic">Mosaic Image Included:</label>
+        <input type="checkbox" id="mosaic">
+      </div>
+
+      <div>
+        <label for="retina-zone">Zone of Retina (Searchable):</label>
+        <input type="text" id="retina-zone">
+      </div>
+
+    </details>
+  </fieldset>
+
+  <hr>
+
+  <fieldset>
+    <legend>Composer</legend>
+    <div>
+      <label for="composer-name">Name:</label>
+      <input type="text" id="composer-name" required>
+    </div>
+  </fieldset>
+
+  <input type="hidden" id="language" value="en">
+  <input type="hidden" id="territory" value="UK/US/etc.">
+
+  <button type="submit">Save Advance Care Plan</button>
+</form>

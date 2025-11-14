@@ -1,0 +1,395 @@
+{
+  "templateId" : "adv_care.v0",
+  "semVer" : "0.1.0",
+  "version" : "2.3",
+  "defaultLanguage" : "en",
+  "languages" : [ "en" ],
+  "tree" : {
+    "id" : "adv_care.v0",
+    "name" : "adv_care.v0",
+    "localizedName" : "adv_care.v0",
+    "rmType" : "COMPOSITION",
+    "nodeId" : "openEHR-EHR-COMPOSITION.advance_care.v0",
+    "min" : 1,
+    "max" : 1,
+    "localizedNames" : {
+      "en" : "adv_care.v0"
+    },
+    "localizedDescriptions" : {
+      "en" : "A plan for the management of future health and social care requirements, including chronic illness and end of life care."
+    },
+    "aqlPath" : "",
+    "children" : [ {
+      "id" : "coded_text",
+      "name" : "Coded text",
+      "localizedName" : "Coded text",
+      "rmType" : "DV_CODED_TEXT",
+      "nodeId" : "at0001",
+      "min" : 1,
+      "max" : 1,
+      "localizedNames" : {
+        "en" : "Coded text"
+      },
+      "localizedDescriptions" : {
+        "en" : ""
+      },
+      "aqlPath" : "/category[at0001]",
+      "inputs" : [ {
+        "suffix" : "code",
+        "type" : "CODED_TEXT",
+        "list" : [ {
+          "value" : "431",
+          "label" : "persistent",
+          "localizedLabels" : {
+            "en" : "persistent"
+          }
+        } ],
+        "terminology" : "openehr"
+      } ],
+      "inContext" : true
+    }, {
+      "id" : "event_context",
+      "name" : "Event Context",
+      "localizedName" : "Event Context",
+      "rmType" : "EVENT_CONTEXT",
+      "nodeId" : "at0002",
+      "min" : 1,
+      "max" : 1,
+      "localizedNames" : {
+        "en" : "Event Context"
+      },
+      "localizedDescriptions" : {
+        "en" : ""
+      },
+      "aqlPath" : "/context[at0002]",
+      "children" : [ {
+        "id" : "acquisition_details_on_eye_fundus_images",
+        "name" : "Acquisition details on eye fundus images",
+        "localizedName" : "Acquisition details on eye fundus images",
+        "rmType" : "CLUSTER",
+        "nodeId" : "openEHR-EHR-CLUSTER.acquisition_details_on_eye_fundus_images.v0",
+        "min" : 0,
+        "max" : 1,
+        "localizedNames" : {
+          "en" : "Acquisition details on eye fundus images"
+        },
+        "localizedDescriptions" : {
+          "en" : "Defines specific details about the acquisition of images from eye fundus."
+        },
+        "aqlPath" : "/context[at0002]/other_context[at0003]/items[openEHR-EHR-CLUSTER.acquisition_details_on_eye_fundus_images.v0]",
+        "children" : [ {
+          "id" : "laterality",
+          "name" : "Laterality",
+          "localizedName" : "Laterality",
+          "rmType" : "DV_CODED_TEXT",
+          "nodeId" : "at0023",
+          "min" : 0,
+          "max" : 1,
+          "localizedNames" : {
+            "en" : "Laterality"
+          },
+          "localizedDescriptions" : {
+            "en" : "Eye/s from which the eye fundus is examined."
+          },
+          "aqlPath" : "/context[at0002]/other_context[at0003]/items[openEHR-EHR-CLUSTER.acquisition_details_on_eye_fundus_images.v0]/items[at0023]/value",
+          "inputs" : [ {
+            "suffix" : "code",
+            "type" : "CODED_TEXT",
+            "list" : [ {
+              "value" : "at0024",
+              "label" : "Left eye",
+              "localizedLabels" : {
+                "en" : "Left eye"
+              },
+              "localizedDescriptions" : {
+                "en" : "Left eye observation."
+              },
+              "termBindings" : {
+                "SNOMED-CT" : {
+                  "value" : "[SNOMED-CT::362503005]",
+                  "terminologyId" : "SNOMED-CT"
+                }
+              }
+            }, {
+              "value" : "at0025",
+              "label" : "Right eye",
+              "localizedLabels" : {
+                "en" : "Right eye"
+              },
+              "localizedDescriptions" : {
+                "en" : "Right eye observation."
+              },
+              "termBindings" : {
+                "SNOMED-CT" : {
+                  "value" : "[SNOMED-CT::362502000]",
+                  "terminologyId" : "SNOMED-CT"
+                }
+              }
+            }, {
+              "value" : "at0026",
+              "label" : "Both eyes",
+              "localizedLabels" : {
+                "en" : "Both eyes"
+              },
+              "localizedDescriptions" : {
+                "en" : "Test acquired on both eyes of the patient."
+              },
+              "termBindings" : {
+                "SNOMED-CT" : {
+                  "value" : "[SNOMED-CT::362508001]",
+                  "terminologyId" : "SNOMED-CT"
+                }
+              }
+            } ]
+          } ],
+          "termBindings" : {
+            "SNOMED-CT" : {
+              "value" : "[SNOMED-CT::272741003]",
+              "terminologyId" : "SNOMED-CT"
+            }
+          }
+        }, {
+          "id" : "method",
+          "name" : "Method",
+          "localizedName" : "Method",
+          "rmType" : "DV_CODED_TEXT",
+          "nodeId" : "at0001",
+          "min" : 0,
+          "max" : 1,
+          "localizedNames" : {
+            "en" : "Method"
+          },
+          "localizedDescriptions" : {
+            "en" : "Method chosen to perform the funduscopic examination."
+          },
+          "aqlPath" : "/context[at0002]/other_context[at0003]/items[openEHR-EHR-CLUSTER.acquisition_details_on_eye_fundus_images.v0]/items[at0001]/value",
+          "inputs" : [ {
+            "suffix" : "code",
+            "type" : "CODED_TEXT",
+            "list" : [ {
+              "value" : "at0002",
+              "label" : "Direct",
+              "localizedLabels" : {
+                "en" : "Direct"
+              },
+              "localizedDescriptions" : {
+                "en" : "Study performed by direct ophthalmoscopy."
+              }
+            }, {
+              "value" : "at0003",
+              "label" : "Indirect",
+              "localizedLabels" : {
+                "en" : "Indirect"
+              },
+              "localizedDescriptions" : {
+                "en" : "Study of eye fundus by indirect ophthalmoscopy method."
+              }
+            }, {
+              "value" : "at0004",
+              "label" : "Contact lens biomicroscopy",
+              "localizedLabels" : {
+                "en" : "Contact lens biomicroscopy"
+              },
+              "localizedDescriptions" : {
+                "en" : "Eye fundus viewing through biomicroscopy lens in contact to patient's eye surface."
+              }
+            }, {
+              "value" : "at0005",
+              "label" : "Non-contact lens biomicroscopy",
+              "localizedLabels" : {
+                "en" : "Non-contact lens biomicroscopy"
+              },
+              "localizedDescriptions" : {
+                "en" : "Eye fundus viewing through biomicroscopy lens without contact to patient's eye surface."
+              }
+            }, {
+              "value" : "at0006",
+              "label" : "Mydriatic retinography",
+              "localizedLabels" : {
+                "en" : "Mydriatic retinography"
+              },
+              "localizedDescriptions" : {
+                "en" : "Observation of retina through funduscopic images acquired by previous dilatation of patient's pupils."
+              }
+            }, {
+              "value" : "at0007",
+              "label" : "Non-mydriatic retinography",
+              "localizedLabels" : {
+                "en" : "Non-mydriatic retinography"
+              },
+              "localizedDescriptions" : {
+                "en" : "Observation of retina through funduscopic images acquired without previous dilatation of patient's pupils."
+              }
+            }, {
+              "value" : "at0008",
+              "label" : "Angiography",
+              "localizedLabels" : {
+                "en" : "Angiography"
+              },
+              "localizedDescriptions" : {
+                "en" : "Observation of the eye fundus using a fluorescent dye inyected to emphasize the blood vessels in the eye retina."
+              }
+            } ],
+            "defaultValue" : "at0007"
+          } ]
+        }, {
+          "id" : "attempts_allowed",
+          "name" : "Attempts Allowed",
+          "localizedName" : "Attempts Allowed",
+          "rmType" : "DV_COUNT",
+          "nodeId" : "at0011",
+          "min" : 0,
+          "max" : 1,
+          "localizedNames" : {
+            "en" : "Attempts Allowed"
+          },
+          "localizedDescriptions" : {
+            "en" : "Limit on the number of attempts allowed to conduct the acquisition (doesn't compute if test is repeated by a specific recognized technical failure)."
+          },
+          "aqlPath" : "/context[at0002]/other_context[at0003]/items[openEHR-EHR-CLUSTER.acquisition_details_on_eye_fundus_images.v0]/items[at0011]/value",
+          "inputs" : [ {
+            "type" : "INTEGER",
+            "validation" : {
+              "range" : {
+                "minOp" : ">=",
+                "min" : 1
+              }
+            },
+            "defaultValue" : 3
+          } ]
+        }, {
+          "id" : "zone_of_retina",
+          "name" : "Zone of Retina",
+          "localizedName" : "Zone of Retina",
+          "rmType" : "DV_CODED_TEXT",
+          "nodeId" : "at0027",
+          "min" : 0,
+          "max" : -1,
+          "localizedNames" : {
+            "en" : "Zone of Retina"
+          },
+          "localizedDescriptions" : {
+            "en" : "Anatomical structures from retina in which the study of eye fundus is focused."
+          },
+          "aqlPath" : "/context[at0002]/other_context[at0003]/items[openEHR-EHR-CLUSTER.acquisition_details_on_eye_fundus_images.v0]/items[at0027]/value",
+          "inputs" : [ {
+            "suffix" : "code",
+            "type" : "TEXT"
+          }, {
+            "suffix" : "value",
+            "type" : "TEXT"
+          } ],
+          "termBindings" : {
+            "SNOMED-CT" : {
+              "value" : "[SNOMED-CT::280611009]",
+              "terminologyId" : "SNOMED-CT"
+            }
+          }
+        }, {
+          "id" : "study_fields_photographed",
+          "name" : "Study Fields Photographed",
+          "localizedName" : "Study Fields Photographed",
+          "rmType" : "DV_CODED_TEXT",
+          "nodeId" : "at0029",
+          "min" : 0,
+          "max" : -1,
+          "localizedNames" : {
+            "en" : "Study Fields Photographed"
+          },
+          "localizedDescriptions" : {
+            "en" : "Specifies which fields from a specific subdivision of the retina are photographed in the study of eye fundus."
+          },
+          "aqlPath" : "/context[at0002]/other_context[at0003]/items[openEHR-EHR-CLUSTER.acquisition_details_on_eye_fundus_images.v0]/items[at0029]/value",
+          "inputs" : [ {
+            "suffix" : "code",
+            "type" : "TEXT"
+          }, {
+            "suffix" : "value",
+            "type" : "TEXT"
+          } ]
+        }, {
+          "id" : "mosaic",
+          "name" : "Mosaic",
+          "localizedName" : "Mosaic",
+          "rmType" : "DV_BOOLEAN",
+          "nodeId" : "at0020",
+          "min" : 0,
+          "max" : 1,
+          "localizedNames" : {
+            "en" : "Mosaic"
+          },
+          "localizedDescriptions" : {
+            "en" : "If true, the study includes a mosaic image that combines all eye fundus fields acquired into a single picture."
+          },
+          "aqlPath" : "/context[at0002]/other_context[at0003]/items[openEHR-EHR-CLUSTER.acquisition_details_on_eye_fundus_images.v0]/items[at0020]/value",
+          "inputs" : [ {
+            "type" : "BOOLEAN"
+          } ]
+        } ]
+      }, {
+        "id" : "start_time",
+        "name" : "Start_time",
+        "rmType" : "DV_DATE_TIME",
+        "min" : 1,
+        "max" : 1,
+        "aqlPath" : "/context[at0002]/start_time",
+        "inputs" : [ {
+          "type" : "DATETIME"
+        } ],
+        "inContext" : true
+      }, {
+        "id" : "setting",
+        "name" : "Setting",
+        "rmType" : "DV_CODED_TEXT",
+        "min" : 1,
+        "max" : 1,
+        "aqlPath" : "/context[at0002]/setting",
+        "inputs" : [ {
+          "suffix" : "code",
+          "type" : "TEXT"
+        }, {
+          "suffix" : "value",
+          "type" : "TEXT"
+        } ],
+        "inContext" : true
+      } ]
+    }, {
+      "id" : "language",
+      "name" : "Language",
+      "rmType" : "CODE_PHRASE",
+      "min" : 1,
+      "max" : 1,
+      "aqlPath" : "/language",
+      "inContext" : true
+    }, {
+      "id" : "territory",
+      "name" : "Territory",
+      "rmType" : "CODE_PHRASE",
+      "min" : 1,
+      "max" : 1,
+      "aqlPath" : "/territory",
+      "inContext" : true
+    }, {
+      "id" : "composer",
+      "name" : "Composer",
+      "rmType" : "PARTY_PROXY",
+      "min" : 1,
+      "max" : 1,
+      "aqlPath" : "/composer",
+      "inputs" : [ {
+        "suffix" : "id",
+        "type" : "TEXT"
+      }, {
+        "suffix" : "id_scheme",
+        "type" : "TEXT"
+      }, {
+        "suffix" : "id_namespace",
+        "type" : "TEXT"
+      }, {
+        "suffix" : "name",
+        "type" : "TEXT"
+      } ],
+      "inContext" : true
+    } ]
+  }
+}
