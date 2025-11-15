@@ -4,5 +4,27 @@
 /entry
 /openEHR_xml
 /section
-*text
-test.opt
+/test
+/node_modules/
+frontend_project/node_modules/
+/test/
+*test
+dist/
+build/
+*.out
+# Logs
+npm-debug.log*
+yarn-debug.log*
+
+# Environment Variables
+.env
+.env.*
+.env.local
+
+# Operating System Files
+.DS_Store
+
+# IDE and Editor Files (Optional, but recommended)
+.vscode/
+.idea/
+*.sublime-workspace

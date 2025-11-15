@@ -5,7 +5,7 @@ from flask import Flask, jsonify, abort
 from flask_cors import CORS
 
 # --- Config ---
-ARCHETYPE_ROOT_DIR = 'openEHR_xml'
+ARCHETYPE_ROOT_DIR = '../openEHR_xml'
 ARCHETYPE_CACHE = {}
 # Tell Flask to serve static files from the current directory
 app = Flask(__name__, static_url_path='', static_folder='.')
@@ -255,7 +255,7 @@ def serve_frontend():
     """
     API Endpoint: Serves the index.html file as the main page.
     """
-    return app.send_static_file('index.html')
+    return app.send_static_file('../test/index.html')
 
 
 @app.route('/api/archetypes', methods=['GET'])
