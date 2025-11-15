@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Form: {{ title }}</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h1 { color: #2c3e50; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; font-size: 1.8em; }
+        form { display: grid; grid-gap: 20px; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-weight: 600; margin-bottom: 8px; color: #555; }
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group input[type="date"],
+        .form-group input[type="datetime-local"],
+        .form-group select {
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 1em;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 5px rgba(0,123,255,0.25);
+            outline: none;
+        }
+        .form-group-checkbox { flex-direction: row; align-items: center; }
+        .form-group-checkbox input { margin-right: 10px; }
+        fieldset { border: 1px solid #ccc; border-radius: 5px; padding: 15px; margin-top: 10px; }
+        legend { font-weight: 700; color: #0056b3; padding: 0 5px; }
+        button {
+            padding: 12px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+        button:hover { background-color: #0056b3; }
+        #json-output {
+            background: #2c3e50;
+            color: #f4f7f6;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+            overflow-x: auto;
+            display: none; /* Hidden by default */
+        }
+        #json-output h2 { margin-top: 0; color: #fff; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Form: {{ title }}</h1>
+        <p><a href="/">&larr; Back to Search</a></p>
+
+        <form id="dynamic-form">
+            {% macro render_field(field) %}
+                {% if field.type == 'text' %}
+                    <div class="form-group">
+                        <label for="{{ field.name }}">{{ field.label }}</label>
+                        <input type="text" id="{{ field.name }}" name="{{ field.name }}">
+                    </div>
+                {% elif field.type == 'number' %}
+                    <div class="form-group">
+                        <label for="{{ field.name }}">{{ field.label }} {% if field.units %}({{ field.units }}){% endif %}</label>
+                        <input type="number" id="{{ field.name }}" name="{{ field.name }}" {% if field.step %}step="{{ field.step }}"{% else %}step="any"{% endif %}>
+                    </div>
+                {% elif field.type == 'date' or field.type == 'datetime-local' %}
+                    <div class="form-group">
+                        <label for="{{ field.name }}">{{ field.label }}</label>
+                        <input type="{{ field.type }}" id="{{ field.name }}" name="{{ field.name }}">
+                    </div>
+                {% elif field.type == 'checkbox' %}
+                    <div class="form-group form-group-checkbox">
+                        <input type="checkbox" id="{{ field.name }}" name="{{ field.name }}" value="true">
+                        <label for="{{ field.name }}">{{ field.label }}</label>
+                    </div>
+                {% elif field.type == 'select' %}
+                    <div class="form-group">
+                        <label for="{{ field.name }}">{{ field.label }}</label>
+                        <select id="{{ field.name }}" name="{{ field.name }}">
+                            <option value="">-- Select an option --</option>
+                            {% for option in field.options %}
+                                <option value="{{ option.value }}">{{ option.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% elif field.type == 'cluster' %}
+                    <fieldset>
+                        <legend>{{ field.label }}</legend>
+                        {% for sub_field in field.children %}
+                            {{ render_field(sub_field) }}
+                        {% endfor %}
+                    </fieldset>
+                {% elif field.type == 'slot' %}
+                     <div class="form-group">
+                        <label>{{ field.label }} (SLOT)</label>
+                        <input type="text" name="{{ field.name }}" placeholder="Complex slot: {{ field.allows }}" disabled>
+                    </div>
+                {% endif %}
+            {% endmacro %}
+
+            {% for field in fields %}
+                {{ render_field(field) }}
+            {% endfor %}
+
+            <button type="submit">Submit and View JSON</button>
+        </form>
+
+        <div id="json-output">
+            <h2>Submitted JSON Data</h2>
+            <pre id="json-pre"></pre>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('dynamic-form').addEventListener('submit', function(event) {
+            // Stop the form from submitting the old-fashioned way
+            event.preventDefault();
+
+            const form = event.target;
+            const formData = new FormData(form);
+            const data = {};
+
+            // This is tricky: we need to handle nested names.
+            // For this demo, we'll just do a flat structure.
+            // A real app would need to parse names like "cluster[subfield]"
+            formData.forEach((value, key) => {
+                // Handle checkboxes (only send if checked)
+                if (form.elements[key] && form.elements[key].type === 'checkbox') {
+                    data[key] = form.elements[key].checked;
+                } else {
+                    data[key] = value;
+                }
+            });
+
+            // Show the output box
+            const outputDiv = document.getElementById('json-output');
+            const outputPre = document.getElementById('json-pre');
+
+            outputPre.textContent = JSON.stringify(data, null, 2);
+            outputDiv.style.display = 'block';
+
+            // Scroll to the output
+            outputDiv.scrollIntoView({ behavior: 'smooth' });
+        });
+    </Fscript>
+
+</body>
+</html>
