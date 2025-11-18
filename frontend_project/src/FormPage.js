@@ -48,14 +48,50 @@ function FormPage() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault(); // Stop the page from reloading
-    console.log("Final Form Data:", formData);
-    setSubmittedJson(JSON.stringify(formData, null, 2));
+
+    // Add the archetypeId and a placeholder patientId to the data being sent
+    const finalData = {
+        ...formData,
+        archetypeId: archetypeId, // Ensure the ID is passed for the backend relational column
+        patientId: 'PAT-001-DEMO', // Placeholder: replace with actual patient context
+    };
+
+    console.log("Final Form Data to Send:", finalData);
+
+    try {
+      // Clear previous error message
+      setError(null);
+
+      const res = await fetch(`${API_URL}/api/ehr/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(finalData),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.description || 'Failed to save document.');
+      }
+
+      // Set the submitted JSON display with the final payload
+      setSubmittedJson(JSON.stringify(finalData, null, 2));
+      alert(`Success! Document saved with ID: ${result.record_id}`);
+
+    } catch (err) {
+      console.error('Failed to submit form:', err);
+      // Update the state to display the error to the user
+      setError(`Submission Error: ${err.message}`);
+    }
   };
 
   if (loading) return <div>Loading form...</div>;
-  if (error) return <div className="error">Error: {error}</div>;
+  // Use the error state to display submission errors as well
+  if (error && !loading) return <div className="error">Error: {error}</div>;
 
   return (
     <div>
