@@ -21,6 +21,9 @@ yarn-debug.log*
 .env.*
 .env.local
 
+backend/venv/
+backend/__pycache__
+
 # Operating System Files
 .DS_Store
 
@@ -28,3 +31,5 @@ yarn-debug.log*
 .vscode/
 .idea/
 *.sublime-workspace
+
+/templates_2026_03_16
