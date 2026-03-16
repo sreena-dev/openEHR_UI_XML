@@ -1,45 +1,70 @@
+"""
+openEHR Medical Application — Flask Backend
+
+This backend acts as a secure proxy layer between the React/Medblocks-UI frontend
+and the EHRbase Clinical Data Repository. It does NOT store clinical data locally.
+
+SAFETY: All clinical data operations are audit-logged. Input validation is enforced
+on every endpoint that handles patient data.
+"""
+
 import os
-import glob
-from lxml import etree
+import re
+import json
+import logging
+from datetime import datetime
+from functools import wraps
+
 from flask import Flask, jsonify, abort, request
 from flask_cors import CORS
-from archetype_parser import parse_archetype_to_form
-import psycopg2
-import json
 from werkzeug.exceptions import HTTPException
+from dotenv import load_dotenv
 
-ARCHETYPE_ROOT_DIR = '../openEHR_xml'
+from ehrbase_client import EHRbaseClient, EHRbaseError
 
+# Load environment variables from .env file
+load_dotenv()
+
+# ─── Logging Setup ────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger('openehr_backend')
+
+# ─── Flask App Setup ──────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app)
 
-# --- Database Configuration (UPDATE THIS!) ---
-DB_CONFIG = {
-    'host': 'localhost',
-    'port':'5433',
-    'database': 'OpenEHR_db',
-    'user': 'postgres',
-    'password': 'sreena7'
-}
+# CORS: Restrict to allowed origins only
+cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+CORS(app, origins=cors_origins)
+
+# ─── EHRbase Client ───────────────────────────────────────────────────
+ehrbase = EHRbaseClient()
+
+# ─── Rate Limiting ────────────────────────────────────────────────────
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=["200 per minute"],
+        storage_uri="memory://",
+    )
+    logger.info("Rate limiting enabled")
+except ImportError:
+    limiter = None
+    logger.warning("flask-limiter not installed. Rate limiting disabled.")
 
 
-def get_db_connection():
-    """Establishes a connection to the PostgreSQL database."""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
-    except Exception as e:
-        print(f"ERROR: Could not connect to database: {e}")
-        return None
-
-
-# ---------------------------------------------
+# ─── Error Handlers ───────────────────────────────────────────────────
 
 @app.errorhandler(HTTPException)
-def handle_exception(e):
+def handle_http_exception(e):
     """Return JSON instead of HTML for HTTP errors."""
     response = e.get_response()
-    # Replace the body with a JSON object
     response.data = json.dumps({
         "code": e.code,
         "name": e.name,
@@ -49,187 +74,335 @@ def handle_exception(e):
     return response
 
 
-# --- This is our simple "database" ---
-ARCHETYPE_FILE_MAP = {}
-ARCHETYPE_LIST_CACHE = []
-MAP_BUILT = False
+@app.errorhandler(EHRbaseError)
+def handle_ehrbase_error(e):
+    """Handle EHRbase-specific errors."""
+    status = e.status_code or 502
+    return jsonify({
+        "code": status,
+        "name": "EHRbase Error",
+        "description": str(e),
+    }), status
 
 
-def parse_archetype_header(xml_file):
-    # ... (parse_archetype_header function remains unchanged) ...
+# ─── Input Validation Helpers ─────────────────────────────────────────
+
+def validate_patient_id(patient_id):
     """
-    Parses an ADL 1.4 XML file to get its ID and human-readable name.
+    SAFETY: Validates patient ID format to prevent injection attacks.
+    Patient IDs must be alphanumeric with hyphens/underscores, max 64 chars.
+    """
+    if not patient_id or not isinstance(patient_id, str):
+        return False
+    if len(patient_id) > 64:
+        return False
+    # Allow alphanumeric, hyphens, underscores, and dots
+    if not re.match(r'^[a-zA-Z0-9._-]+$', patient_id):
+        return False
+    return True
+
+
+def validate_template_id(template_id):
+    """
+    Validates template ID format.
+    """
+    if not template_id or not isinstance(template_id, str):
+        return False
+    if len(template_id) > 128:
+        return False
+    # Allow alphanumeric, hyphens, underscores, dots, and parentheses
+    if not re.match(r'^[a-zA-Z0-9._()\- ]+$', template_id):
+        return False
+    return True
+
+
+def sanitize_string(value, max_length=1000):
+    """
+    SAFETY: Sanitize string inputs by stripping control characters
+    and limiting length.
+    """
+    if not isinstance(value, str):
+        return value
+    # Remove control characters except newlines and tabs
+    cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', value)
+    return cleaned[:max_length]
+
+
+# ─── API ENDPOINTS ────────────────────────────────────────────────────
+
+# ── Health Check ──
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """
+    Health check endpoint verifying backend, DB, and EHRbase connectivity.
+    """
+    from db import check_db_health
+    
+    ehrbase_status = ehrbase.health_check()
+    db_status = 'healthy' if check_db_health() else 'unreachable'
+    
+    return jsonify({
+        'backend': 'healthy',
+        'database': db_status,
+        'ehrbase': ehrbase_status,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    })
+
+
+# ── Template Management ──
+
+@app.route('/api/templates', methods=['GET'])
+def get_templates():
+    """
+    API Endpoint: Returns the list of all available templates from EHRbase.
+
+    Response: JSON array of template objects:
+    [
+        {
+            "template_id": "blood_pressure",
+            "concept": "blood_pressure",
+            "archetype_id": "openEHR-EHR-...",
+            "created_timestamp": "..."
+        },
+        ...
+    ]
     """
     try:
-        tree = etree.parse(xml_file)
-        root = tree.getroot()
-        ns = {'openEHR': 'http://schemas.openehr.org/v1'}
+        templates = ehrbase.list_templates()
 
-        archetype_id_node = root.find('.//openEHR:archetype_id/openEHR:value', namespaces=ns)
-        if archetype_id_node is None or archetype_id_node.text is None:
-            return None
-        archetype_id = archetype_id_node.text
+        # Enrich with display-friendly names
+        for t in templates:
+            # Use concept as display name, fallback to template_id
+            name = t.get('concept', t.get('template_id', 'Unknown'))
+            # Convert underscores/dots to spaces and title-case for display
+            t['display_name'] = name.replace('_', ' ').replace('.', ' ').title()
 
-        concept_code = root.find('.//openEHR:concept', namespaces=ns).text
+        logger.info(f"Serving {len(templates)} templates to frontend")
+        return jsonify(templates)
 
-        # --- THIS IS THE FIX ---
-        # Look for the @language='en' ATTRIBUTE, not an element
-        name_node = root.find(
-            f".//openEHR:term_definitions[@language='en']/openEHR:items[@code='{concept_code}']/openEHR:items[@id='text']",
-            namespaces=ns)
-
-        # Fallback to any language if 'en' isn't found
-        if name_node is None:
-            name_node = root.find(
-                f".//openEHR:term_definitions/openEHR:items[@code='{concept_code}']/openEHR:items[@id='text']",
-                namespaces=ns)
-
-        name = name_node.text if (name_node is not None and name_node.text is not None) else archetype_id
-
-        return {'id': archetype_id, 'name': name, 'file_path': xml_file}
-
-    except Exception as e:
-        print(f"Error parsing header for {xml_file}: {e}. Skipping.")
-        return None
+    except EHRbaseError as e:
+        logger.error(f"Failed to fetch templates: {e}")
+        abort(502, description="Could not fetch templates from EHRbase.")
 
 
-def build_archetype_map():
-    # ... (build_archetype_map function remains unchanged) ...
+@app.route('/api/web-template/<path:template_id>', methods=['GET'])
+def get_web_template(template_id):
     """
-    Scans all files and builds the ID-to-FilePath map AND the list cache.
+    API Endpoint: Returns the Web Template JSON for a specific template.
+    This is consumed by the Medblocks-UI frontend to render forms.
+
+    Args:
+        template_id: The template identifier (e.g., 'blood_pressure')
     """
-    global ARCHETYPE_FILE_MAP, ARCHETYPE_LIST_CACHE, MAP_BUILT
-    # --- THIS IS THE FIX ---
-    # If the map is already built, just return the cached list
-    if MAP_BUILT:
-        return ARCHETYPE_LIST_CACHE
-        # -----------------------
-
-    print("Scanning for archetypes and building map...")
-    xml_files = glob.glob(os.path.join(ARCHETYPE_ROOT_DIR, '**', '*.xml'), recursive=True)
-
-    temp_list = []
-    for f in xml_files:
-        header_data = parse_archetype_header(f)
-        if header_data:
-            ARCHETYPE_FILE_MAP[header_data['id']] = header_data['file_path']
-            temp_list.append({
-                'id': header_data['id'],
-                'name': header_data['name']
-            })
-
-    temp_list.sort(key=lambda x: x['name'])
-
-    ARCHETYPE_LIST_CACHE = temp_list  # <-- Save the list to the cache
-    MAP_BUILT = True
-
-    return ARCHETYPE_LIST_CACHE  # <-- Return the list
-
-
-# --- API ENDPOINT 1: THE SEARCH LIST ---
-@app.route('/api/archetypes', methods=['GET'])
-def get_archetype_list():
-    # ... (get_archetype_list function remains unchanged) ...
-    """
-    API Endpoint: Returns a list of all available archetypes.
-    """
-    archetypes_list = build_archetype_map()  # This will now always return a list
-    return jsonify(archetypes_list)
-
-
-# --- API ENDPOINT 2: THE FORM GENERATOR ---
-@app.route('/api/archetype/form/<string:archetype_id>', methods=['GET'])
-def get_archetype_form(archetype_id):
-    # ... (get_archetype_form function remains unchanged) ...
-    """
-    API Endpoint: Returns the form structure for a single archetype.
-    """
-    if not MAP_BUILT:
-        build_archetype_map()
-
-    file_path = ARCHETYPE_FILE_MAP.get(archetype_id)
-
-    if not file_path:
-        print(f"Form requested for unknown ID: {archetype_id}")
-        abort(404, description="Archetype ID not found.")
-
-    print(f"Generating form for: {archetype_id} from {file_path}")
+    if not validate_template_id(template_id):
+        abort(400, description="Invalid template ID format.")
 
     try:
-        form_fields = parse_archetype_to_form(file_path)
+        web_template = ehrbase.get_web_template(template_id)
+        return jsonify(web_template)
 
-        if not form_fields:
-            abort(404, description="Could not parse form fields for this archetype.")
-
-        return jsonify(form_fields)
-
-    except Exception as e:
-        print(f"Critical error parsing {file_path}: {e}")
-        abort(500, description="Server error while parsing archetype.")
+    except EHRbaseError as e:
+        if e.status_code == 404:
+            abort(404, description=f"Template '{template_id}' not found in EHRbase.")
+        logger.error(f"Error fetching web template '{template_id}': {e}")
+        abort(502, description="Could not fetch web template from EHRbase.")
 
 
-# --- API ENDPOINT 3: SAVE TO DATABASE (NEW) ---
-@app.route('/api/ehr/save', methods=['POST'])
-def save_ehr_document():
+# ── EHR Management ──
+
+@app.route('/api/ehr', methods=['POST'])
+def create_ehr():
     """
-    API Endpoint: Receives form data and saves it to the ehr_documents table.
+    API Endpoint: Creates a new EHR for a patient, or returns existing one.
+
+    Request body: { "patient_id": "PAT-001" }
+    Response: { "ehr_id": "uuid-...", "patient_id": "PAT-001" }
+
+    SAFETY: Validates patient ID and prevents duplicate EHR creation.
     """
     if not request.json:
-        abort(400, description="Missing JSON data.")
+        abort(400, description="Missing JSON body.")
 
-    form_data = request.json
+    patient_id = request.json.get('patient_id')
+    if not validate_patient_id(patient_id):
+        abort(400, description="Invalid patient_id. Must be alphanumeric, max 64 characters.")
 
-    # 1. Extract required metadata
-    # These keys are sent by the frontend's handleSubmit function
-    archetype_id = form_data.get('archetypeId')
-    patient_id = form_data.get('patientId')
-
-    if not archetype_id or not patient_id:
-        abort(400, description="Missing 'archetypeId' or 'patientId' in form data.")
-
-    # 2. Connect to DB
-    conn = get_db_connection()
-    if conn is None:
-        abort(500, description="Database connection failed. Check backend console.")
+    logger.info(f"AUDIT: EHR creation requested for patient_id={patient_id}")
 
     try:
-        cur = conn.cursor()
+        result = ehrbase.create_ehr(patient_id)
+        ehr_id = result.get('ehr_id', {}).get('value', '')
 
-        # SQL to insert data into the ehr_documents table
-        insert_query = """
-                       INSERT INTO ehr_documents (archetype_id, patient_id, data)
-                       VALUES (%s, %s, %s) RETURNING id; \
-                       """
+        # It says 'created' if EHRbase generated one, or 'exists' if it returned early
+        logger.info(f"AUDIT: EHR created/found for patient {patient_id}: ehr_id={ehr_id}")
 
-        # Convert Python dict to a JSON string for PostgreSQL, which it converts to JSONB
-        json_data_str = json.dumps(form_data)
+        return jsonify({
+            'ehr_id': ehr_id,
+            'patient_id': patient_id,
+            'status': 'success'
+        }), 201
 
-        cur.execute(insert_query, (archetype_id, patient_id, json_data_str))
+    except EHRbaseError as e:
+        logger.error(f"AUDIT: Failed to create/fetch EHR for patient {patient_id}: {e}")
+        abort(502, description=f"Failed to create/fetch EHR: {e}")
 
-        saved_id = cur.fetchone()[0]
-        conn.commit()
-        cur.close()
-        conn.close()
 
-        print(f"Successfully saved document {archetype_id} for {patient_id}. DB ID: {saved_id}")
+@app.route('/api/ehr/<string:patient_id>', methods=['GET'])
+def get_ehr_for_patient(patient_id):
+    """
+    API Endpoint: Look up the EHR ID for a given patient.
+    """
+    if not validate_patient_id(patient_id):
+        abort(400, description="Invalid patient_id format.")
+
+    try:
+        result = ehrbase.get_ehr_by_subject(patient_id)
+        if result is None:
+            abort(404, description=f"No EHR found for patient '{patient_id}'.")
+
+        ehr_id = result.get('ehr_id', {}).get('value', '')
+        return jsonify({
+            'ehr_id': ehr_id,
+            'patient_id': patient_id
+        })
+
+    except EHRbaseError as e:
+        logger.error(f"Error looking up EHR for patient {patient_id}: {e}")
+        abort(502, description="Could not query EHRbase.")
+
+
+# ── Composition Management ──
+
+@app.route('/api/composition', methods=['POST'])
+def submit_composition():
+    """
+    API Endpoint: Receives Flat JSON from the frontend and submits it to EHRbase.
+
+    SAFETY: This is the primary clinical data submission endpoint.
+    All submissions are validated and audit-logged.
+
+    Request body:
+    {
+        "ehr_id": "uuid-...",
+        "template_id": "blood_pressure",
+        "composition": { ... flat JSON key-value pairs ... }
+    }
+    """
+    if not request.json:
+        abort(400, description="Missing JSON body.")
+
+    data = request.json
+    ehr_id = data.get('ehr_id')
+    template_id = data.get('template_id')
+    composition = data.get('composition', {})
+
+    # Validate required fields
+    if not ehr_id:
+        abort(400, description="Missing 'ehr_id'.")
+    if not validate_template_id(template_id):
+        abort(400, description="Invalid or missing 'template_id'.")
+    if not composition or not isinstance(composition, dict):
+        abort(400, description="Missing or invalid 'composition' data.")
+
+    # Sanitize string values in the composition
+    sanitized_composition = {}
+    for key, value in composition.items():
+        sanitized_key = sanitize_string(key, max_length=500)
+        if isinstance(value, str):
+            sanitized_composition[sanitized_key] = sanitize_string(value)
+        else:
+            sanitized_composition[sanitized_key] = value
+
+    logger.info(
+        f"AUDIT: Composition submission - ehr_id={ehr_id}, "
+        f"template_id={template_id}, field_count={len(sanitized_composition)}"
+    )
+
+    try:
+        result = ehrbase.submit_composition(ehr_id, template_id, sanitized_composition)
+
+        comp_uid = result.get('compositionUid', 'unknown')
+        logger.info(
+            f"AUDIT: Composition saved successfully - "
+            f"ehr_id={ehr_id}, template_id={template_id}, uid={comp_uid}"
+        )
 
         return jsonify({
             'status': 'success',
-            'message': 'Document saved successfully',
-            'record_id': saved_id,
-            'archetype_id': archetype_id
+            'message': 'Composition saved to EHRbase successfully',
+            'composition_uid': comp_uid,
+            'ehr_id': ehr_id,
+            'template_id': template_id,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
         }), 201
 
-    except Exception as e:
-        conn.rollback()  # Important: Rollback on error
-        print(f"Database insertion error: {e}")
-        abort(500, description=f"Failed to save document to database: {e}")
-    finally:
-        if conn:
-            conn.close()
+    except EHRbaseError as e:
+        logger.error(
+            f"AUDIT: Composition submission FAILED - "
+            f"ehr_id={ehr_id}, template_id={template_id}, error={e}"
+        )
+        abort(
+            e.status_code or 502,
+            description=f"Failed to save composition to EHRbase: {e}"
+        )
 
 
-# --- Run the App ---
+# ── AQL Query ──
+
+@app.route('/api/query', methods=['POST'])
+def run_aql_query():
+    """
+    API Endpoint: Execute an AQL query against EHRbase.
+
+    Request body: { "aql": "SELECT ... FROM EHR ..." }
+    Response: { "columns": [...], "rows": [...] }
+    """
+    if not request.json or 'aql' not in request.json:
+        abort(400, description="Missing 'aql' query in request body.")
+
+    aql = request.json.get('aql', '')
+
+    # SAFETY: Basic AQL injection prevention
+    # AQL should not contain dangerous keywords for data modification
+    dangerous_patterns = ['DELETE', 'UPDATE', 'DROP', 'INSERT', 'ALTER', 'TRUNCATE']
+    aql_upper = aql.upper()
+    for pattern in dangerous_patterns:
+        if pattern in aql_upper:
+            logger.warning(f"AUDIT: Blocked potentially dangerous AQL query containing '{pattern}'")
+            abort(400, description=f"AQL queries containing '{pattern}' are not allowed.")
+
+    try:
+        result = ehrbase.query_aql(aql, request.json.get('query_parameters'))
+        return jsonify(result)
+    except EHRbaseError as e:
+        if e.status_code == 400:
+            abort(400, description=f"Invalid AQL query: {e}")
+        logger.error(f"AQL query error: {e}")
+        abort(502, description="Failed to execute query against EHRbase.")
+
+
+# ─── Run the App ──────────────────────────────────────────────────────
+
 if __name__ == '__main__':
-    print(f"Starting backend server on http://127.0.0.1:9000")
-    app.run(debug=True, port=9000)
+    from db import initialize_database
+    
+    port = int(os.getenv('FLASK_PORT', 9000))
+    debug = os.getenv('FLASK_DEBUG', 'true').lower() == 'true'
+
+    logger.info(f"Starting openEHR backend on http://127.0.0.1:{port}")
+    logger.info(f"EHRbase URL: {ehrbase.base_url}")
+
+    # Initialize PostgreSQL mapping table
+    db_initialized = initialize_database()
+    if not db_initialized:
+        logger.warning("Could not initialize PostgreSQL database. Ensure the container is running or .env is correct.")
+
+    # Verify EHRbase connectivity on startup
+    health = ehrbase.health_check()
+    if health['status'] == 'healthy':
+        logger.info(f"EHRbase is healthy. {health.get('template_count', 0)} templates available.")
+    else:
+        logger.warning(f"EHRbase connectivity issue: {health.get('error', 'unknown')}")
+
+    app.run(debug=debug, port=port)

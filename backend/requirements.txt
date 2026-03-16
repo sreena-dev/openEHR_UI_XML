@@ -1,0 +1,6 @@
+Flask
+Flask-Cors
+flask-limiter
+requests
+psycopg2-binary
+python-dotenv
